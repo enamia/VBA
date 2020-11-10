@@ -1,0 +1,115 @@
+Option Explicit
+
+' ■ AAを計算
+' ⇒ 最適像面の方程式(z=ax+by+c)を計算して(a,b,c)を返す
+
+' * a/b/c_flag=1のときそのパラメータを最適化する
+'    ⇒ 像面だけ最適化したい場合は(a_flag=0, b_flag=0, c_flag=1)とする
+
+Public Function Calculate_AA(x As Variant, y As Variant, z As Variant, sample As Long, _
+a_flag As Integer, b_flag As Integer, c_flag As Integer, weight As Variant) As Variant
+
+    Dim i, j, k, t As Long
+    Dim a() As Double
+    Dim b() As Double
+    Dim c() As Double
+    
+    Dim RSS As Variant
+    Dim delta_RSS As Variant
+    Dim RSS_a_delta As Double: RSS_a_delta = 0
+    Dim RSS_b_delta As Double: RSS_b_delta = 0
+    Dim RSS_c_delta As Double: RSS_c_delta = 0
+    Dim RSS_0
+         
+         
+    ' RSS計算する関数に配列を渡すために2次元配列からサンプル番号を取り除いた1次元配列に変更
+    Dim dzz As Variant
+    ReDim dzz(UBound(z, 1))
+    For i = 0 To UBound(z, 1)
+        dzz(i) = z(i, sample)
+    Next
+              
+    ' 配列要素再定義　⇒　都度拡張する
+    ReDim a(0), b(0), c(0)
+    ReDim RSS(0)
+    
+    a(0) = 0: b(0) = 0: c(0) = 0
+    t = 0
+    delta_RSS = 1
+         
+    ' RSSの偏差が設定した閾値以下になるまで繰り返す
+    Do While (delta_RSS > threshold_AA)
+        
+        ReDim Preserve RSS(t + 1)
+        ReDim Preserve a(t + 1), b(t + 1), c(t + 1)
+        
+        ' RSS初期値計算
+        RSS_0 = calculate_RSS(a(t), b(t), c(t), x, y, dzz, weight)
+        RSS(t) = RSS_0
+
+        ' RSSの残差を計算
+        If (t = 0) Then
+            delta_RSS = 1
+        Else
+            delta_RSS = Abs(RSS(t) - RSS(t - 1))
+        End If
+        
+        ' 像面(z=ax+by+c)を動かしたときのRSSを計算
+        If (a_flag = 1) Then RSS_a_delta = calculate_RSS(a(t) + delta_AA, b(t), c(t), x, y, dzz, weight)
+        If (b_flag = 1) Then RSS_b_delta = calculate_RSS(a(t), b(t) + delta_AA, c(t), x, y, dzz, weight)
+        If (c_flag = 1) Then RSS_c_delta = calculate_RSS(a(t), b(t), c(t) + delta_AA, x, y, dzz, weight)
+        
+        
+        ' 平面のパラメータを更新する
+        If (a_flag = 1) Then
+            a(t + 1) = a(t) - alpha_AA * (RSS_a_delta - RSS_0) / delta_AA
+        ElseIf (a_flag = 0) Then
+            a(t + 1) = 0
+        End If
+        If (b_flag = 1) Then
+            b(t + 1) = b(t) - alpha_AA * (RSS_b_delta - RSS_0) / delta_AA
+        ElseIf (b_flag = 0) Then
+            b(t + 1) = 0
+        End If
+        If (c_flag = 1) Then
+            c(t + 1) = c(t) - alpha_AA * (RSS_c_delta - RSS_0) / delta_AA
+        ElseIf (c_flag = 0) Then
+            c(t + 1) = 0
+        End If
+        
+        t = t + 1
+        
+        
+        'Debug.Print "a=", t, a(UBound(b))
+        'Debug.Print "b=", t, b(UBound(b))
+        
+        ' 無限ループ回避
+        If (t > 10000) Then
+            MsgBox "Sample=" & sample & ", Loop over flow. Change alpha!"
+            Exit Do
+        End If
+        
+    Loop
+         
+    ' 戻り値の格納
+    Calculate_AA = Array(a(UBound(a)), b(UBound(b)), c(UBound(c)))
+         
+End Function
+
+' RSS(残差平方和)を計算
+Public Function calculate_RSS(a As Double, b As Double, c As Double, _
+x As Variant, y As Variant, z As Variant, w As Variant) As Double
+    
+    Dim c_RSS As Double: c_RSS = 0
+    Dim i As Integer
+    
+    For i = 0 To AA_point_num - 1
+        c_RSS = c_RSS + CDbl(w(i)) * (z(i) - (a * x(i) + b * y(i) + c)) ^ 2
+    Next
+       
+    calculate_RSS = c_RSS
+
+End Function
+
+
+

@@ -1,0 +1,153 @@
+Option Explicit
+
+' ■ [MTF(AA)] シート[TF MTF AA]からdz=0におけるMTFを取り出し、シート[MTF_AA]に書き込む
+
+' *1 評価像面におけるMTF値は線形補間関数を用いて算出
+
+Sub Extract_MTF_from_TF_AA()
+
+    '=== 設定開始 ===
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+    ' TFデータが書き込まれているシートとMTFを書き込むシートを指定
+    Dim TF_sheet As String: TF_sheet = S_name(5) ' TF MTF AA
+    Dim arr_sheet As String: arr_sheet = S_name(9) ' MTF AA
+    '=== 設定終了 ===
+    
+    ' MTF画角名を格納
+    Dim fov_arr As Variant: fov_arr = Split(fov_arr_string, ",")
+    
+    Dim i As Long, j As Long, k As Long, r As Long, c As Long, t As Long
+    Dim col As Long
+    Dim sam_ID, focus_sum As Variant
+    Dim Eval_pos As Double, mtf As Double
+    Dim count1 As Integer, count2 As Integer
+    Dim s1 As Worksheet: Set s1 = Worksheets(TF_sheet) ' TF MTF AA
+    Dim s2 As Worksheet: Set s2 = Worksheets(arr_sheet) ' MTF AA
+    Dim sample_ID, Azi, freq, slit, a_tilt, b_tilt
+    Dim write_row As Long
+    Dim read_row As Long
+    
+    ' 表示を停止
+    Application.ScreenUpdating = False
+    
+    s2.Cells.Clear  ' セルのクリア
+    s1.Select ' [TF MTF(AA)]を選択
+    
+    
+    ' ■ [MTF AA]への序文書き込み
+    ' 序文書き込み
+    s2.Cells(1, 1) = "Evaluation at [Balanced plane(x,y,z)], With AA"
+    s2.Cells(2, 1) = "Sample_ID"
+    s2.Cells(2, 2) = "Azimuth"
+    s2.Cells(2, 3) = "Spatial Freq."
+    s2.Cells(2, 4) = "TS"
+    s2.Cells(2, 5) = "a(=Tanθ_x)"
+    s2.Cells(2, 6) = "b(=Tanθ_y)"
+    s2.Cells(2, 7) = "Evaluation position"
+    For i = 0 To num_fov - 1
+        s2.Cells(2, i + 8) = fov_arr(i) & "deg"
+    Next
+    ' [TF MTF(AA)]の行読み込みループ
+    For r = 2 To Cells(Rows.count, 2).End(xlUp).Row
+        ' T/S記載列(5列目)がかわったら[MTF(AA)]の書き込み行を進める
+        If (Cells(r, 5) <> Cells(r - 1, 5)) Then
+            sample_ID = Cells(r, 2): Azi = Cells(r, 3): freq = Cells(r, 4): slit = Cells(r, 5): Eval_pos = Cells(r, 10)
+            a_tilt = Cells(r, 8): b_tilt = Cells(r, 9)
+            write_row = s2.Cells(Rows.count, 1).End(xlUp).Row + 1
+            s2.Cells(write_row, 1) = sample_ID
+            s2.Cells(write_row, 2) = Azi
+            s2.Cells(write_row, 3) = freq
+            s2.Cells(write_row, 4) = slit
+            s2.Cells(write_row, 5) = a_tilt
+            s2.Cells(write_row, 6) = b_tilt
+            s2.Cells(write_row, 7) = Eval_pos
+        End If
+    Next r
+
+    
+    ' ■■ 評価像面位置でのMTFの計算と書き込み
+    ' ■ 「TF MTF AA]の行読込ループ
+    s1.Select
+    For r = 2 To Cells(Rows.count, 2).End(xlUp).Row
+        ' ■ Comment列が[dz]となる行番号をみつけたらMTFの計算を開始する
+        If (Cells(r, 11) = "dz") Then
+        'Debug.Print r
+            ' ■ 変数に評価像面位置を代入(TFデータのdzをオフセットしている場合0)
+            Eval_pos = 0
+            ' ■ 画角ループ。1つの[dz]につき[num_fov]個のMTFを計算する
+            For k = 0 To num_fov - 1
+                read_row = r + (k * 2)
+                ' ■ dz行を最終列までループ
+                For col = 12 To Cells(2, Columns.count).End(xlToLeft).Column
+                    ' If文で評価像面位置より大きい列を探す
+                    If (Cells(read_row, col).Value > Eval_pos) Then
+                        ' 評価像面前後のMTFを用いて線形補間により評価像面におけるMTF値を求める
+                        mtf = linearInterpolate(Cells(read_row, col - 1).Value, Cells(read_row, col).Value, _
+                        Cells(read_row + 1, col - 1).Value, Cells(read_row + 1, col).Value, Eval_pos)
+                        mtf = WorksheetFunction.Round(mtf, 3)
+                        ' セルにmtfを書き込む
+                        write_row = s2.Cells(Rows.count, k + 8).End(xlUp).Row + 1
+                        s2.Cells(write_row, k + 8) = mtf
+                        ' 評価像面をみつけたらdzステップループを抜ける
+                        Exit For
+                    End If
+                Next col
+            Next k
+        End If
+        r = r + (k - 1) * 2 + 1 ' 画角読み込んだ分だけ行を進める
+    Next r
+    
+    s2.Select
+    
+    ' ■■ 空間周波数/アジマス角度でソートしたテーブルを追加作成
+    ' ■ コピペ2回
+    Cells(1, 1).CurrentRegion.Copy
+    Cells(2, 1).End(xlToRight).offset(-1, 3).Select
+    ActiveSheet.Paste
+    i = ActiveCell.Column
+    Cells(2, i).End(xlToRight).offset(-1, 3).Select
+    ActiveSheet.Paste
+    j = ActiveCell.Column
+    
+    ' ■ ソート2回
+    ActiveSheet.Sort.SortFields.Clear
+    ActiveSheet.Sort.SortFields.Add Key:=Range _
+        (Cells(3, i + 2), Cells(3, i + 2).End(xlDown)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    With ActiveSheet.Sort
+        .SetRange Range(Cells(3, i), ActiveCell.SpecialCells(xlLastCell))
+        .Header = xlGuess
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+    
+    ActiveSheet.Sort.SortFields.Clear
+    ActiveSheet.Sort.SortFields.Add Key:=Range _
+        (Cells(3, j + 2), Cells(3, j + 2).End(xlDown)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    ActiveSheet.Sort.SortFields.Add Key:=Range _
+        (Cells(3, j + 1), Cells(3, j + 1).End(xlDown)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    With ActiveSheet.Sort
+        .SetRange Range(Cells(3, j), ActiveCell.SpecialCells(xlLastCell))
+        .Header = xlGuess
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+    
+
+    ' 表示を開始
+    Application.ScreenUpdating = True
+
+
+End Sub
+
+
+
+
+

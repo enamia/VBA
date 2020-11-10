@@ -1,0 +1,264 @@
+Option Explicit
+
+' ■ [TF MTF(Tilt)] シート[TF MTF(CB)]からAAをかけたスルーフォーカスデータを作成する
+
+Sub Make_Through_Focus_MTF_Tilt()
+    
+    '=== 設定開始 ===
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+    ' 下処理するシート名
+    Dim arr_sheet As String: arr_sheet = S_name(4) '' TF MTF(Tilt)
+    '=== 設定終了 ===
+    
+    ' MTF画角名を格納
+    Dim fov_arr As Variant: fov_arr = Split(fov_arr_string, ",")
+    ' AA計算に用いる画角を格納する配列
+    Dim fov_AA As Variant:  fov_AA = Split(fov_AA_string, ",")
+    ' dzのオフセット変化量計算用に像高を格納する配列
+    Dim IH_AA As Variant:  IH_AA = Split(IH_AA_string, ",")
+    ' AAに用いる測定点の(x,y)座標を格納する配列
+    Dim IH_x_0deg As Variant: IH_x_0deg = Split(IH_x_0deg_string, ",")    ' x軸上にAzi=0°の光束が結像すると考える
+    Dim IH_x_90deg As Variant: IH_x_90deg = Split(IH_x_90deg_string, ",")    ' x軸上にAzi=0°の光束が結像すると考える
+    Dim IH_y_0deg As Variant: IH_y_0deg = Split(IH_y_0deg_string, ",")    ' y軸上にAzi=90°の光束が結像すると考える
+    Dim IH_y_90deg As Variant: IH_y_90deg = Split(IH_y_90deg_string, ",")    ' y軸上にAzi=90°の光束が結像すると考える
+    Dim IH_x As Variant
+    Dim IH_y As Variant
+    IH_x = Split(Join(IH_x_0deg, vbCrLf) & vbCrLf & Join(IH_x_90deg, vbCrLf), vbCrLf)
+    IH_y = Split(Join(IH_y_0deg, vbCrLf) & vbCrLf & Join(IH_y_90deg, vbCrLf), vbCrLf)
+    
+    ' 最適像面計算時の各測定点の重み
+    Dim AA_weight_x_Tan As Variant: AA_weight_x_Tan = Split(AA_weight_x_Tan_string, ",")
+    Dim AA_weight_x_Sag As Variant: AA_weight_x_Sag = Split(AA_weight_x_Sag_string, ",")
+    Dim AA_weight_y_Tan As Variant: AA_weight_y_Tan = Split(AA_weight_y_Tan_string, ",")
+    Dim AA_weight_y_Sag As Variant: AA_weight_y_Sag = Split(AA_weight_y_Sag_string, ",")
+    Dim AA_weight As Variant
+    AA_weight = Split(Join(AA_weight_x_Tan, vbCrLf) & vbCrLf & Join(AA_weight_x_Sag, vbCrLf) & vbCrLf _
+    & Join(AA_weight_y_Tan, vbCrLf) & vbCrLf & Join(AA_weight_y_Sag, vbCrLf), vbCrLf)
+
+    ' AA計算に用いるアジマス(現時点で0°、90°のみ対応)
+    Dim azi_AA As Variant: azi_AA = Split(azi_AA_string, ",")
+    ' AA計算に用いる空間周波数
+    Dim freq_AA As Variant: freq_AA = Split(freq_AA_string, ",")
+    
+    Dim s1 As Worksheet: Set s1 = Worksheets(S_name(2)) ' TF MTF(CB)
+    Dim s2 As Worksheet: Set s2 = Worksheets(arr_sheet)
+    Dim s3 As Worksheet: Set s3 = Worksheets(S_name(6))
+    
+    
+    Dim i As Long, j As Long, k As Long, r As Long, t As Long
+    Dim col As Long
+    Dim i1, i2, i3, i4, i5 As Long
+    
+    Dim focus As Variant    ' シート[TF MTF(CB)]から[focus position]を格納
+    Dim dz As Variant   ' 配列[focus]をAA計算用に整理した配列(Tan/Sag区別)
+    Dim dz2 As Variant  ' 配列[dz]をAA計算用に整理した配列(Tan/Sag混合)
+    Dim num_sample As Long
+    Dim a, b, c As Variant
+    Dim fov_AA_num As Variant
+    Dim ab_flag As Integer  ' aとbどちらを使ってdzをオフセットするか判断するために使用する変数
+    Dim IH As Double
+    Dim tilt_offset As Double ' 最適像面のチルトによるオフセット量を格納
+    
+    
+    Debug.Print Time & " - Tilt start!"
+    
+    ' 表示を停止
+    Application.ScreenUpdating = False
+    
+    s2.Cells.Clear  ' シートのクリア
+    
+    ' ■■ 最適像面の取得(a,b,c)
+    s1.Select
+    '■ センターベスト位置をシートから取得
+    ' [focus]の要素数(Azimuth, Freq, T/S, FoV, sample No)
+    ' 引数は(i1, i2, i3, i4, i5)
+    ReDim focus(UBound(azi_AA), UBound(freq_AA), 1, num_fov - 1, 0) ' 要素数が1でもForループ回すためにaziとfreqの要素1つ増やした
+    i5 = 0
+    For r = 2 To Cells(Rows.count, 2).End(xlUp).Row
+        ' コメントが"dz"の行のfocus positionを取得
+        If (Cells(r, 8) = "dz") Then
+            ' Azimuthによる区別(0deg/90deg)
+            For k = 0 To UBound(azi_AA)
+                If (Cells(r, 3) = azi_AA(k)) Then
+                    i1 = k
+                End If
+            Next k
+            ' 空間周波数による区別
+            If (UBound(freq_AA) = 0) Then
+                i2 = 0
+            Else
+                For k = 0 To UBound(freq_AA) - 1
+                    If (Cells(r, 4) = freq_AA(k)) Then
+                        i2 = k + 1
+                    End If
+                Next k
+            End If
+            
+            ' Tan/Sagによる区別
+            If (Cells(r + i3 + 1, 5) = "Tan") Then i3 = 0
+            If (Cells(r + i3 + 1, 5) = "Sag") Then i3 = 1
+            
+            ' ■ 配列[focus]へのセンターベスト位置の格納
+            ' 画角による区別
+                For i4 = 0 To num_fov - 1
+                    focus(i1, i2, i3, i4, i5) = Cells(r + i4 + 1, 6)
+                    'Debug.Print i1, i2, i3, i4, i5, focus(i1, i2, i3, i4, i5)
+                Next i4
+        End If
+        
+        ' ■ サンプル名が変わったらサンプル番号を進める
+        If (Cells(r, 2) <> Cells(r + 1, 2)) Then
+            i5 = i5 + 1
+            ReDim Preserve focus(UBound(azi_AA), UBound(freq_AA), 1, num_fov - 1, i5) ' 配列拡張
+        End If
+    Next r
+    
+    
+    ' [focus]から余分な要素を削除
+    ReDim Preserve focus(UBound(azi_AA), UBound(freq_AA), 1, num_fov - 1, i5 - 1)
+    
+    
+     '■ 配列[fov_arr]の中でAAに使用する画角の要素番号を取得し[fov_AA_num]に格納
+    ReDim fov_AA_num(UBound(fov_AA))
+    For i = 0 To UBound(fov_arr)
+        If (fov_arr(i) = fov_AA(j)) Then
+            fov_AA_num(j) = i
+            j = j + 1
+        End If
+    Next i
+    
+    
+    ' ■ AAの計算に用いるz座標(MTF peak位置)を格納する二次元配列[dz]を[focus]から作成
+    ' dz(画角, Azi, サンプル番号)
+    ' サンプル番号 ⇒ Azi　⇒ 画角の順で掃引する
+    ' 空間周波数=固定、画角は T⇒Sの順
+    ReDim dz(AA_point_num / 2 - 1, 1, UBound(focus, 5))
+    For i5 = 0 To UBound(focus, 5)
+        j = 0
+        ' Azimuthループ
+        For i1 = 0 To UBound(azi_AA)
+            i = 0
+            ' T/Sループ
+            For i3 = 0 To 1
+                ' 空間周波数ループ
+                For i2 = 0 To 0 ' 空間周波数は1つのみ使用
+                    t = 0
+                    ' 画角ループ
+                    For i4 = 0 To num_fov - 1
+                        If (i4 = fov_AA_num(t)) Then
+                            dz(i, j, i5) = focus(i1, i2, i3, i4, i5)
+                            'Debug.Print "(i,i1,i2,i3,i4,i5)=", i, i1, i2, i3, i4, i5
+                            'Debug.Print "dz", dz(i, i3, i5)
+                            i = i + 1
+                            t = t + 1
+                        End If
+                    Next i4
+                Next i2
+            Next i3
+            j = j + 1
+        Next i1
+    Next i5
+    
+    ' AA計算のために配列[dz]をTan/Sag混合した配列[dz2]に変換
+    ReDim dz2(UBound(dz, 1) * 2 + 1, UBound(dz, 3))
+    For i5 = 0 To UBound(dz, 3)
+        i = 0
+        For i3 = 0 To 1
+            For i1 = 0 To UBound(dz, 1)
+                dz2(i, i5) = dz(i1, i3, i5)
+                i = i + 1
+            Next i1
+        Next i3
+    Next i5
+    
+ 
+    ' ■ 配列[focus]からサンプル毎に(a,b,c)を取り出し配列[a/b/c]に格納
+    num_sample = UBound(focus, 5) + 1
+    ReDim a(num_sample - 1), b(num_sample - 1), c(num_sample - 1)
+    ' サンプル番号ループ
+    Dim temp As Variant
+    
+    For i = 0 To num_sample - 1
+        temp = Calculate_AA(IH_x, IH_y, dz2, i, 1, 1, 0, AA_weight)
+        a(i) = temp(0)
+        b(i) = temp(1)
+        'c(i) = temp(2)
+        c(i) = s3.Cells(3 + i * 4, 5)
+    Next i
+    
+DoEvents ' 処理が途中で停止しないようにするためのおまじない
+    
+
+' ■ シート[TF MTF(AA)]の下処理するサブルーチンを実施([TF MTF(CB)のコピー、dz行の挿入)
+Call Arrange_sheet_TF_MTF_AA(arr_sheet)
+
+
+' ■ 最適像面のパラメータ(a,b,c)を使って各dzをオフセットする
+s2.Select
+' シートに(a,b,c)を記述する列を挿入
+Range(Columns(8), Columns(10)).Insert
+Cells(1, 8) = "a(=Tanθ_x)" ' aが正 = 最適像面の傾き方向はxz平面で時計回りに負
+Cells(1, 9) = "b(=Tanθ_y)" ' bが正 = 最適像面の傾き方向はyz平面で時計回りに負
+Cells(1, 10) = "c(AA balanced z-position)"   ' c: IMHRのzステージ位置
+i = 0   ' [a/b/c]の要素番号
+For r = 2 To Cells(Rows.count, 2).End(xlUp).Row
+    ' 最適像面のパラメータを記述
+    Cells(r, 8) = WorksheetFunction.Round(a(i), 4)
+    Cells(r, 9) = WorksheetFunction.Round(b(i), 4)
+    Cells(r, 10) = WorksheetFunction.Round(c(i), 3)
+
+    ' ■ Comment列 = "dz"になる度に最適像面のパラメータ(a,b,c)を使ってdzをオフセット
+    If (Cells(r, 11) = "dz") Then
+        tilt_offset = 0
+        
+        ' ■ 最適像面のz座標[c(i)]を引くことでdzのオフセットを行う
+        For col = 12 To Cells(r, Columns.count).End(xlToLeft).Column
+            Cells(r, col) = Cells(r, col) - c(i)
+        Next col
+        
+        ' ■ [ab_flag]=0のとき[a]を使用, [ab_flag]=1のとき[b]を使用してdzをオフセットする
+        If (Cells(r, 3) = azi_AA(0)) Then
+            ab_flag = 0
+        ElseIf (Cells(r, 3) = azi_AA(1)) Then
+            ab_flag = 1
+        End If
+        
+        ' ■ Comment列のセルを参照して、オフセット量計算に使う像高を求める
+        For j = 0 To UBound(fov_arr)
+            If (InStr(Cells(r + 1, 11), fov_arr(j)) = 1) Then
+                IH = IH_AA(j)
+            End If
+        Next j
+        
+        ' ■ 像面チルトによるオフセット量の決定
+        If (ab_flag = 0) Then
+            tilt_offset = IH * a(i)
+        ElseIf (ab_flag = 1) Then
+            tilt_offset = IH * b(i)
+        End If
+        
+        ' ■ 像面チルトによるオフセット処理の実行
+        For col = 12 To Cells(r, Columns.count).End(xlToLeft).Column
+            Cells(r, col) = Cells(r, col) - tilt_offset
+        Next col
+        
+        'Debug.Print tilt_offset
+        
+    End If
+    
+    ' サンプル名が変わるタイミングで[i]を進める
+    If (Cells(r, 2) <> Cells(r + 1, 2)) Then
+        i = i + 1
+    End If
+Next r
+
+
+Debug.Print Time & " - Tilt finish!"
+Application.ScreenUpdating = True
+DoEvents
+
+End Sub
+
+
+

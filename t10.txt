@@ -1,0 +1,341 @@
+Option Explicit
+
+' ■ [TF MTF Graph] 作成 (AA)
+
+Sub Make_TF_MTF_Graph_AA()
+
+    '=== 設定開始 ===
+        
+    ' チャートのサイズ/描画開始位置
+    Const c_tate As Integer = 20
+    Const c_yoko As Integer = 6
+    Const c_row As Integer = 3
+    Const c_column As Integer = 3
+    
+    ' CenterBest positionの縦線を描画するか(If 0: No, 1: Yes)
+    Const Draw_CB_flag As Integer = 0
+    ' MTF閾値を描画するか(If 0: No, 1: Yes)
+    Const Draw_MTF_Threshold_flag As Integer = 0
+    ' MTF評価像面縦線を描画するか(If 0: No, 1: Yes)
+    Const Draw_AA_flag As Integer = 1
+    
+    
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+    Dim s_name1 As String: s_name1 = S_name(5) ' TF MTFのシート
+    Dim s_name2 As String: s_name2 = S_name(11) ' グラフをかきこむシート(TF graph AA)
+    Dim s_name3 As String: s_name3 = S_name(6) ' CB位置を抜き取ってくるシート(MTF CB)
+    Dim s_name4 As String: s_name4 = S_name(7) ' z-Balance位置を抜き取ってくるシート(MTF Def)
+    Dim s_name5 As String: s_name5 = S_name(9) ' AA_z-Balance位置を抜き取ってくるシート(MTF AA)
+    
+    Dim Evaluation_pos As Double: Evaluation_pos = 0    ' 評価像面位置
+    
+    ' 円周率
+    Dim Pi As Double: Pi = Atn(1) * 4
+    
+    '=== 設定終了 ===
+    
+    ' MTF画角名を格納
+    Dim fov_arr As Variant: fov_arr = Split(fov_arr_string, ",")
+    ' MTF閾値を格納
+    Dim MTF_threshold As Variant: MTF_threshold = Split(MTF_threshold_string, ",")
+    
+    Dim s1, s2, s3, s4, s5 As Worksheet
+    Dim ws As Worksheet, flag As Boolean
+    Dim i, r, k As Integer
+    Dim Rng  As Range
+    Dim g_count As Integer: g_count = 0 ' グラフの総作成数
+    Dim g_count1, g_count2 As Integer: g_count1 = 0: g_count2 = 0
+    Dim shp As Shape
+    Dim c_title As String
+    Dim CB_pos As Double
+    Dim Design_pos As Double
+    Dim Balance_pos As Double
+    Dim AA_Balance_pos As Double
+    Dim x_rng As Range, y_rng As Range
+    Dim num_ser As Long
+    
+    Set s1 = Worksheets(s_name1)
+    Set s2 = Worksheets(s_name2)
+    Set s3 = Worksheets(s_name3)
+    Set s4 = Worksheets(s_name4)
+    Set s5 = Worksheets(s_name5)
+
+    
+    
+    ' セルへの描画表示停止
+    Application.ScreenUpdating = False
+
+    ' すでにシートがあったらクリア、なかったら挿入
+    For Each ws In Worksheets
+        If ws.Name = s_name2 Then flag = True
+    Next ws
+    If flag = True Then
+        ' チャートとセルのクリア
+        For i = Worksheets(s_name2).ChartObjects.count To 1 Step -1
+            Worksheets(s_name2).ChartObjects(i).Delete
+        Next i
+        Worksheets(s_name2).Cells.Clear
+    Else
+        ' ワークシートの追加
+        With Worksheets.Add(after:=Worksheets(s_name1))
+            .Name = s_name1
+        End With
+    End If
+
+
+
+
+' ================
+' ↓　グラフ作成処理開始
+' ================
+
+
+' コーディングの際グラフシートを明示するよう注意！
+
+
+' 行番号ループ
+For r = 2 To s1.Cells(Rows.count, 2).End(xlUp).Row
+    ' 10列目がdZになる行に来たらグラフを作成する
+    If (s1.Cells(r, 11) = "dz") Then
+        ' グラフ作成数のカウント
+        g_count = g_count + 1
+        ' 像面の確定
+        Design_pos = WorksheetFunction.Round(s3.Cells((g_count - 1) * 2 + 3, 5).Value, 3)
+        CB_pos = Design_pos - offset_pos * (-1)
+        Balance_pos = WorksheetFunction.Round(s4.Cells((g_count - 1) * 2 + 3, 5).Value, 3)
+        AA_Balance_pos = WorksheetFunction.Round(s5.Cells((g_count - 1) * 2 + 3, 7).Value, 3)
+        
+        ' !! チャート作成 !!
+        ' グラフシート内に作成
+        ' [TAN] 1画角のみのチャートを作成
+        Set Rng = Range(s1.Cells(r, 11), s1.Cells(r + 1, Columns.count).End(xlToLeft))
+        With Worksheets(s_name2).Shapes.AddChart2(240, xlXYScatterSmooth)
+            .Chart.SetSourceData Rng
+        End With
+        
+        ' グラフのアクティベート
+        s2.ChartObjects(g_count).Activate
+        
+        ' [TAN]系列の追加(全画角)
+        For k = 1 To num_fov - 1
+            Set x_rng = Range(s1.Cells(r + (k * 2), 12), s1.Cells(r + (k * 2), Columns.count).End(xlToLeft))
+            Set y_rng = Range(s1.Cells(r + (k * 2) + 1, 12), s1.Cells(r + (k * 2) + 1, Columns.count).End(xlToLeft))
+            ActiveChart.SeriesCollection.NewSeries
+            ActiveChart.FullSeriesCollection(k + 1).Name = s1.Cells(r + (k * 2) + 1, 11)
+            ActiveChart.FullSeriesCollection(k + 1).XValues = x_rng
+            ActiveChart.FullSeriesCollection(k + 1).Values = y_rng
+        Next k
+        
+        ' [TAN] 系列の描画設定
+        For i = ActiveChart.FullSeriesCollection.count To 1 Step -1
+            With ActiveChart.SeriesCollection(i).Border
+                .LineStyle = xlDot
+            End With
+        Next
+        
+        ' [SAG]系列の追加(全画角)
+        For k = num_fov To 2 * num_fov - 1
+            Set x_rng = Range(s1.Cells(r + (k * 2), 12), s1.Cells(r + (k * 2), Columns.count).End(xlToLeft))
+            Set y_rng = Range(s1.Cells(r + (k * 2) + 1, 12), s1.Cells(r + (k * 2) + 1, Columns.count).End(xlToLeft))
+            ActiveChart.SeriesCollection.NewSeries
+            ActiveChart.FullSeriesCollection(k + 1).Name = s1.Cells(r + (k * 2) + 1, 11)
+            ActiveChart.FullSeriesCollection(k + 1).XValues = x_rng
+            ActiveChart.FullSeriesCollection(k + 1).Values = y_rng
+        Next k
+        
+        
+        ' MTF系列の描画設定
+        For i = ActiveChart.FullSeriesCollection.count To 1 Step -1
+            ActiveChart.FullSeriesCollection(i).MarkerSize = 3
+        Next
+
+        
+         ' ■ グラフ位置/サイズ設定
+        ' 周波数によって書き込み位置をかえる！(要拡張)
+        If (s1.Cells(r, 4) = graph_freq_1) Then
+            '--サイズを合わせるセル範囲
+            g_count1 = g_count1 + 1
+            Set Rng = Range(s2.Cells(c_tate * (g_count1 - 1) + c_row, c_column), _
+            s2.Cells(c_tate * (g_count1 - 1) + c_tate + 2, c_column + c_yoko))
+        Else
+            g_count2 = g_count2 + 1
+            Set Rng = Range(s2.Cells(c_tate * (g_count2 - 1) + c_row, c_column + c_yoko + 2), _
+            s2.Cells(c_tate * (g_count2 - 1) + c_tate + 2, c_column + 2 * c_yoko + 2))
+        End If
+
+        
+        With s2.ChartObjects(g_count)
+            ' 上端/左端/高さ/幅
+            .Top = Rng.Top
+            .Left = Rng.Left
+            .Height = Rng.Height
+            .Width = Rng.Width
+        End With
+        ' チャートタイトル入力
+        ActiveChart.SetElement (msoElementChartTitleAboveChart)
+        ActiveChart.ChartTitle.Select
+        c_title = "No." & s1.Cells(r, 2) & "_" & s1.Cells(r, 3) & "_" & s1.Cells(r, 4)
+        Selection.Caption = c_title
+        
+        
+        ' 縦軸範囲設定
+        ActiveChart.Axes(xlValue).MinimumScale = 0
+        ActiveChart.Axes(xlValue).MaximumScale = 1
+        ActiveChart.Axes(xlValue).MajorUnit = 0.1
+        ActiveChart.Axes(xlValue).TickLabels.Font.Size = 11
+        ' 横軸範囲設定
+        ActiveChart.Axes(xlCategory).MinimumScale = Evaluation_pos - 0.05
+        ActiveChart.Axes(xlCategory).MaximumScale = Evaluation_pos + 0.05
+        ActiveChart.Axes(xlCategory).MajorUnit = 0.02
+        ActiveChart.SetElement (msoElementPrimaryCategoryGridLinesMinor)
+        ActiveChart.Axes(xlCategory).MinorUnit = 0.01
+        ActiveChart.Axes(xlCategory).TickLabels.Font.Size = 11
+        
+        
+        
+        num_ser = ActiveChart.SeriesCollection.count
+        ' 評価像面位置追加(CB)
+        ActiveChart.SeriesCollection.NewSeries
+        ActiveChart.FullSeriesCollection(num_ser + 1).Name = "=""Design pos"""
+        ActiveChart.FullSeriesCollection(num_ser + 1).XValues = _
+        "={" & Design_pos - AA_Balance_pos & ", " & Design_pos - AA_Balance_pos & "}"
+        ActiveChart.FullSeriesCollection(num_ser + 1).Values = "={0,1}"
+        ' AF系列設定
+        ActiveChart.FullSeriesCollection(num_ser + 1).Select
+        ' マーカーなし/サイズ
+        With Selection
+            .MarkerStyle = -4142
+            ' 色/太さ
+            With Selection.Format.Line
+                .ForeColor.RGB = RGB(255, 0, 0)
+                .weight = 1
+            End With
+        End With
+        
+        
+        num_ser = ActiveChart.SeriesCollection.count
+        ' CB像面位置縦線追加(Draw_CB_flag =1の場合)
+        If (Draw_CB_flag = 1) Then
+        ActiveChart.SeriesCollection.NewSeries
+        ActiveChart.FullSeriesCollection(num_ser + 1).Name = "=""CenterBest"""
+        ActiveChart.FullSeriesCollection(num_ser + 1).XValues = _
+        "={" & CB_pos - AA_Balance_pos & ", " & CB_pos - AA_Balance_pos & "}"
+        ActiveChart.FullSeriesCollection(num_ser + 1).Values = "={0,1}"
+        ' AF系列設定
+        ActiveChart.FullSeriesCollection(num_ser + 1).Select
+        ' マーカーなし/サイズ
+        With Selection
+            .MarkerStyle = -4142
+            ' 色/太さ
+            With Selection.Format.Line
+                .ForeColor.RGB = RGB(0, 0, 0)
+                .weight = 1
+                .DashStyle = 2
+            End With
+        End With
+        End If
+        
+        num_ser = ActiveChart.SeriesCollection.count
+        ' 評価像面位置縦線追加(Defocus)(Draw_CB_flag =1の場合)
+        If (Draw_AA_flag = 1) Then
+        ActiveChart.SeriesCollection.NewSeries
+        ActiveChart.FullSeriesCollection(num_ser + 1).Name = "=""Evaluation"""
+        'ActiveChart.FullSeriesCollection(num_fov + 4).XValues = _
+        "={" & Balance_pos - AA_Balance_pos & ", " & Balance_pos - AA_Balance_pos & "}"
+        ActiveChart.FullSeriesCollection(num_ser + 1).XValues = _
+        "={" & Evaluation_pos & ", " & Evaluation_pos & "}"
+        ActiveChart.FullSeriesCollection(num_ser + 1).Values = "={0,1}"
+        ' AF系列設定
+        ActiveChart.FullSeriesCollection(num_ser + 1).Select
+        ' マーカーなし/サイズ
+        With Selection
+            .MarkerStyle = -4142
+            ' 色/太さ
+            With Selection.Format.Line
+                .ForeColor.RGB = RGB(0, 0, 255)
+                .weight = 1
+            End With
+        End With
+        End If
+        
+        
+        ' MTF閾値追加
+        If (Draw_MTF_Threshold_flag = 1) Then
+            For k = 0 To UBound(MTF_threshold)
+                num_ser = ActiveChart.SeriesCollection.count
+                ' MTF閾値横線追加(Draw_MTF_Threshold_flag =1の場合)
+                ActiveChart.SeriesCollection.NewSeries
+                ActiveChart.FullSeriesCollection(num_ser + 1).Name = "=""Threshold"""
+                ActiveChart.FullSeriesCollection(num_ser + 1).XValues = "={-100,100}"
+                ' 周波数で分岐
+                ActiveChart.FullSeriesCollection(num_ser + 1).Values = "={" & MTF_threshold(k) & ", " & MTF_threshold(k) & "}"
+                ' AF系列設定
+                ActiveChart.FullSeriesCollection(num_ser + 1).Select
+                ' マーカーなし/サイズ
+                With Selection
+                    .MarkerStyle = -4142
+                    ' 色/太さ
+                    With Selection.Format.Line
+                        .ForeColor.RGB = RGB(255, 0, 255)
+                        .weight = 1
+                        .DashStyle = 2
+                    End With
+                End With
+            Next
+        End If
+        
+        
+        
+        ' 設計像面位置を表示するテキストボックスの挿入
+        Set shp = ActiveChart.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
+        Left:=20, Top:=30, Width:=170, Height:=20)
+        shp.TextFrame2.TextRange.Text = "Design position [mm] = " & _
+        WorksheetFunction.Round((Design_pos - AA_Balance_pos), 3)
+        
+        ' 評価像面のパラメータを表示するテキストボックスの挿入
+        Set shp = ActiveChart.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
+        Left:=20, Top:=50, Width:=170, Height:=20)
+        shp.TextFrame2.TextRange.Text = "Tilt_x = " & WorksheetFunction.Round(Atn(s1.Cells(r, 8)) / (Pi / 180), 2) & "°"
+        Set shp = ActiveChart.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
+        Left:=20, Top:=70, Width:=170, Height:=20)
+        shp.TextFrame2.TextRange.Text = "Tilt_y = " & WorksheetFunction.Round(Atn(s1.Cells(r, 9)) / (Pi / 180), 2) & "°"
+        Set shp = ActiveChart.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
+        Left:=20, Top:=90, Width:=170, Height:=20)
+        shp.TextFrame2.TextRange.Text = "Z(c) = " & WorksheetFunction.Round(s1.Cells(r, 10), 3) & "mm"
+        
+        
+        ' MTF系列の描画設定
+        For i = ActiveChart.FullSeriesCollection.count To 1 Step -1
+            ActiveChart.FullSeriesCollection(i).MarkerSize = 4
+        Next
+        
+        ' 凡例の設定
+        ActiveChart.SetElement (msoElementLegendRight)
+        ActiveChart.Legend.IncludeInLayout = False                 ''凡例をグラフに重ねる
+        ActiveChart.Legend.Format.TextFrame2.TextRange.Font.Size = 11
+        ActiveChart.Legend.Left = 450
+        ActiveChart.Legend.Top = 10
+        'ActiveChart.Legend.Height = 260
+        'ActiveChart.Legend.Width = 140
+        
+    End If
+    
+    ' Tan/Sag分オフセットしてずらす
+    r = r + 4 * num_fov - 1
+        
+Next r
+
+' スルーフォーカスグラフのシートに移動
+s2.Activate
+
+
+' セルへの描画表示開始
+Application.ScreenUpdating = True
+
+
+
+
+End Sub
+
+

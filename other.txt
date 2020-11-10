@@ -1,0 +1,45 @@
+Option Explicit
+
+
+Sub Macro1()
+'
+' 30deg
+    ActiveChart.FullSeriesCollection(1).Delete
+    ActiveChart.FullSeriesCollection(1).Delete
+    ActiveChart.FullSeriesCollection(4).Delete
+    ActiveChart.FullSeriesCollection(4).Delete
+    ActiveChart.FullSeriesCollection(4).Delete
+    ActiveChart.FullSeriesCollection(4).Delete
+    ActiveChart.FullSeriesCollection(7).Delete
+    ActiveChart.FullSeriesCollection(7).Delete
+    'ActiveChart.FullSeriesCollection(8).Delete
+End Sub
+Sub Macro5()
+'
+' 55deg
+
+    ActiveChart.FullSeriesCollection(1).Delete
+    ActiveChart.FullSeriesCollection(2).Delete
+    ActiveChart.FullSeriesCollection(3).Delete
+    ActiveChart.FullSeriesCollection(4).Delete
+    ActiveChart.FullSeriesCollection(4).Delete
+    ActiveChart.FullSeriesCollection(5).Delete
+    ActiveChart.FullSeriesCollection(6).Delete
+    ActiveChart.FullSeriesCollection(7).Delete
+    'ActiveChart.FullSeriesCollection(8).Delete
+   
+End Sub
+Sub Macro6()
+'
+' 80deg
+    ActiveChart.FullSeriesCollection(2).Delete
+    ActiveChart.FullSeriesCollection(2).Delete
+    ActiveChart.FullSeriesCollection(3).Delete
+    ActiveChart.FullSeriesCollection(3).Delete
+    ActiveChart.FullSeriesCollection(5).Delete
+    ActiveChart.FullSeriesCollection(5).Delete
+    ActiveChart.FullSeriesCollection(6).Delete
+    ActiveChart.FullSeriesCollection(6).Delete
+    'ActiveChart.FullSeriesCollection(8).Delete
+End Sub
+

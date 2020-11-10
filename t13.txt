@@ -1,0 +1,228 @@
+Option Explicit
+
+' ■ RI
+
+' [動作]
+' 1. IM-HRで測定しmht形式で保存した光学量(MTF, RI等)を複数ファイルから一括で抽出
+' 2. シートにかきこむマクロ群
+
+Sub Extract_RI_from_MHT()
+         
+    '=== 設定開始 ===
+    ' mhtファイルをテキストとして読み込んだときに排除したい文字列(適宜変更すること)
+    Dim Arr() As Variant
+    Arr = Array("=09")
+    Dim edit_data_mode As String: edit_data_mode = 1 ' (If 1) 提示用に体裁を整えた表を別途作成する
+    '=== 設定終了 ===
+    
+     
+    ' [[ 変数定義 ]]
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+    
+    Dim varFileName As Variant
+    Dim FileName As Variant
+    Dim relFileName As Variant
+    Dim num_file As Integer: num_file = 1  ' ファイル番号
+    Dim num_row As Integer                 ' mhtから読み出す行の総数
+    Dim i, r, c As Long                          ' 開くテキストファイルの行番号
+    Dim rr As Long                         ' 読み出したい行番号
+    Dim elm As Variant
+    Dim s_name1 As String: s_name1 = S_name(13)
+    Dim count As Integer
+    Dim Row_read() As Integer: ReDim Row_read(0)    'Index 0で初期化
+    Dim pos As Long
+    Dim Azi As Variant                    ' 方位角を格納
+    Dim sam_ID As Variant            ' サンプル番号を格納
+    Dim buf As String
+    Dim row_paste As Integer
+    
+    ' 検索キーワード
+    Dim key1 As String: key1 = "RI_"
+    Dim key2 As String: key2 = "*.mht"
+    Dim file_num As Long
+    
+    Debug.Print Time & " - RI start!"
+    
+    
+    ' ■ 読み出す行番号を[Row_read]に格納（mhtファイル毎に適宜変更すること)
+    'Row_read = Array(100, 101, 106, 107, 112, 113, 118, 119, 124, 125)
+    For i = 1 To num_fov_RI
+        ' 最初に定数を配列に格納する
+        If (UBound(Row_read) = 0) Then
+            Row_read(UBound(Row_read)) = Row_RI_read_start
+            ReDim Preserve Row_read(UBound(Row_read) + 1)    ' 配列拡張
+        End If
+        ' (2 * 6 * num_fov_RI) -1個格納
+        count = 0 '
+        Do Until (count = 2)
+            ' Row_readへの格納時に、添え字の数値指定ではなくUboundで最大要素に追加する。
+            If ((count = 0) And (UBound(Row_read) <> 1)) Then
+                Row_read(UBound(Row_read)) = Row_RI_read_start + (i - 1) * 6
+                ReDim Preserve Row_read(UBound(Row_read) + 1)
+            ElseIf (count = 1) Then
+                Row_read(UBound(Row_read)) = Row_RI_read_start + (i - 1) * 6 + 1
+                ReDim Preserve Row_read(UBound(Row_read) + 1)
+            End If
+            count = count + 1
+        Loop
+    Next i
+    '1つ余分に作ってしまうので削除
+    ReDim Preserve Row_read(UBound(Row_read) - 1)
+    num_row = UBound(Row_read)
+        
+    ' 表示を停止
+    Application.ScreenUpdating = False
+    
+    
+    ' ■ 処理するファイルの総数を取得
+    ' 検索フォルダのパス
+    FileName = Dir(FolderName & key1 & key2)
+    Do While FileName <> ""
+        If InStr(FileName, key1) <> 0 Then
+            file_num = file_num + 1
+        End If
+        FileName = Dir()
+    Loop
+    
+    ' ■ 動的配列のサイズを再定義
+    ReDim sam_ID(file_num)
+    ReDim Azi(file_num)
+    
+    ' 目的のシートをアクティベート
+    Sheets(s_name1).Activate
+    Cells.Clear
+    
+    ' ■■ ファイル番号ループ
+    FileName = Dir(FolderName & key1 & "*mht")  ' フォルダの中に含まれるMTFのmhtファイルを取り出す
+    Do While FileName <> ""  ' ファイルがなくなるまで繰り返す
+         
+         ' 相対パスの取得
+        pos = InStrRev(FileName, "\")
+        relFileName = Mid(FileName, pos + 1)
+        
+        ' サンプルIDを相対パス名から取得
+        sam_ID(num_file) = Mid(relFileName, InStr(relFileName, Sample_name))
+        sam_ID(num_file) = Replace(sam_ID(num_file), Sample_name & "_sample_", "")
+        ' 日付[_2018_...]の最初の[_20]の部分を拾ってくる
+        sam_ID(num_file) = Left(sam_ID(num_file), InStr(sam_ID(num_file), "_20") - 1)
+        
+        ' アジマス角を相対パス名から取得
+        Azi(num_file) = Mid(relFileName, InStr(relFileName, "Azimuth_"))
+        Azi(num_file) = Replace(Azi(num_file), "Azimuth_", "")
+        ' [deg]の前部分を拾ってくる
+        Azi(num_file) = CInt(Left(Azi(num_file), InStr(Azi(num_file), "deg") - 1))
+        
+        ' ■ mhtファイルを開く
+        Open FileName For Input As num_file
+        
+        r = 1  ' 読み込んでる行番号
+        rr = 0 ' [Row_read]の要素番号
+    
+        ' ■ 最終行まで1行ずつデータを読み込む
+        Do Until EOF(num_file)
+            Line Input #num_file, buf
+        
+            Dim aryLine As Variant '文字列格納用配列変数
+            aryLine = Split(buf, vbTab) '読み込んだ行をタブ区切りで配列変数に格納
+            
+            ' 読込行に到達したらデータの取得と書き込み
+            If (r = Row_read(rr)) Then
+                For i = LBound(aryLine) To UBound(aryLine)
+                    ' mhtファイルをテキスト表示したときについてくる不要な文字を排除
+                    For Each elm In Arr
+                        aryLine(i) = Replace(aryLine(i), elm, "")
+                    Next elm
+                    ' RIを3列目からかきこみ
+                    Cells(i + num_file, rr + 3) = aryLine(i)
+                    ' サンプルID/Azimuthのかきこみ
+                    Cells(i + num_file, 1) = sam_ID(num_file)
+                    Cells(i + num_file, 2) = Azi(num_file) & "deg"
+                    
+                    rr = rr + 1
+                    ' ループ抜け
+                    If (rr = num_row + 1) Then Exit Do
+                Next
+            End If
+            r = r + 1
+        Loop
+        Close num_file
+        num_file = num_file + 1
+        
+        FileName = Dir() ' 次のファイル名を取得
+    Loop
+        
+    
+    ' ■ 一行目にシート説明用の行を挿入
+    Rows("1:1").Insert Shift:=xlDown, CopyOrigin:=xlFormatFromLeftOrAbove
+    Cells(1, 1) = "Sample_ID"
+    Cells(1, 2) = "Azimuth"
+    
+  
+    ' ■ グラフ作成用にソート、コピペ、体裁調整
+    If (edit_data_mode = 1) Then
+        
+         ' ■ ソート
+        ' ソートフィールドセット
+        Worksheets(s_name1).Sort.SortFields.Clear
+        ' サンプルID昇順
+        Worksheets(s_name1).Sort.SortFields.Add Key:=Range( _
+        Cells(2, 1), Cells(Rows.count, 1).End(xlUp)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+        ' アジマス角昇順
+        Worksheets(s_name1).Sort.SortFields.Add Key:=Range( _
+        Cells(2, 2), Cells(Rows.count, 2).End(xlUp)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+        ' ソート実行
+        With Worksheets(s_name1).Sort
+            .SetRange Range(Cells(2, 1), ActiveCell.SpecialCells(xlLastCell))
+            .Header = xlGuess
+            .MatchCase = False
+            .Orientation = xlTopToBottom
+            .SortMethod = xlPinYin
+            .Apply
+        End With
+    
+        ' ■ コピペ
+        row_paste = Cells(2, Columns.count).End(xlToLeft).Column
+        row_paste = row_paste + 3
+        Cells(1, row_paste) = "Azimuth"
+        
+        ' 画角書き込み
+        For r = 1 To num_fov_RI
+            Cells(r + 2, row_paste) = Cells(2, 3 + 2 * (r - 1))
+        Next
+        
+        ' 行読込ループ
+        For r = 2 To Cells(Rows.count, 1).End(xlUp).Row
+            ' ■ RI書き込み
+            i = 0 ' セル書き込み補助量
+            ' 列読込ループ
+            For c = 3 To Cells(2, 1).End(xlToRight).Column
+                ' 2列毎にRIを取り出し ⇒ 書き込み
+                If (c Mod 2 = 0) Then
+                    Cells(3 + i, row_paste + r - 1) = Cells(r, c)
+                    i = i + 1
+                End If
+            Next c
+            
+            ' ■ サンプルID/アジマス角書き込み
+            Cells(1, row_paste + r - 1) = Cells(r, 2)
+            Cells(2, row_paste + r - 1) = Cells(r, 1)
+        Next r
+    End If
+    
+    ' 表示を開始
+    Application.ScreenUpdating = True
+    
+    Debug.Print Time & " - RI finish!"
+    DoEvents
+    
+End Sub
+
+
+
+
+
+
+

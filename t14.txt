@@ -1,0 +1,190 @@
+Option Explicit
+
+' ■ EFL (from Distortion measurement)
+
+' [動作]
+' 1. IM-HRで測定しcsv形式で保存した光学量(MTF, RI等)を複数ファイルから一括で抽出
+' 2. シートにかきこむマクロ群
+
+Sub Extract_EFL_from_CSV()
+         
+    '=== 設定開始 ===
+    ' mhtファイルをテキストとして読み込んだときに排除したい文字列(適宜変更すること)
+    Dim Arr() As Variant
+    Arr = Array("=09")
+    Dim edit_data_mode As String: edit_data_mode = 0 ' (If 1) 提示用に体裁を整えた表を別途作成する
+    '=== 設定終了 ===
+    
+     
+     
+    ' [[ 変数定義 ]]
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+   
+    Dim varFileName As Variant
+    Dim FileName As Variant
+    Dim relFileName As Variant
+    Dim num_file As Integer: num_file = 1  ' ファイル番号
+    Dim num_row As Integer                 ' mhtから読み出す行の総数
+    Dim i, r, c As Long                          ' 開くテキストファイルの行番号
+    Dim rr As Long                         ' 読み出したい行番号
+    Dim elm As Variant
+    Dim s_name1 As String: s_name1 = S_name(15)
+    Dim count As Integer
+    Dim Row_read() As Integer: ReDim Row_read(0)    'Index 0で初期化
+    Dim pos As Long
+    Dim Azi As Variant                    ' 方位角を格納
+    Dim sam_ID As Variant            ' サンプル番号を格納
+    Dim buf As String
+    Dim row_paste As Integer
+    Dim EFL As Double
+    Dim temp
+        
+    ' 検索キーワード
+    Dim key1 As String: key1 = "EFL_"
+    Dim key2 As String: key2 = "*.csv"
+    Dim file_num As Long
+    
+    Debug.Print Time & " - EFL start!"
+       
+        
+    ' 表示を停止
+    Application.ScreenUpdating = False
+    
+    ' ■ 処理するファイルの総数を取得
+    ' 検索フォルダのパス
+    FileName = Dir(FolderName & key1 & "*.csv")
+    Do While FileName <> ""
+        If InStr(FileName, key1) <> 0 Then
+            file_num = file_num + 1
+        End If
+        FileName = Dir()
+    Loop
+    
+    ' ■ 動的配列のサイズを再定義
+    ReDim sam_ID(file_num)
+    ReDim Azi(file_num)
+    
+    ' 目的のシートをアクティベート
+    Sheets(s_name1).Activate
+    Cells.Clear
+    
+    ' ■■ ファイル番号ループ
+    FileName = Dir(FolderName & key1 & key2)  ' フォルダの中に含まれるMTFのmhtファイルを取り出す
+    Do While FileName <> ""  ' ファイルがなくなるまで繰り返す
+        
+         ' 相対パスの取得
+        pos = InStrRev(FileName, "\")
+        relFileName = Mid(FileName, pos + 1)
+        
+        ' サンプルIDを相対パス名から取得
+        sam_ID(num_file) = Mid(relFileName, InStr(relFileName, Sample_name))
+        sam_ID(num_file) = Replace(sam_ID(num_file), Sample_name & "_sample_", "")
+        ' 日付[_2018_...]の最初の[_20]の部分を拾ってくる
+        sam_ID(num_file) = Left(sam_ID(num_file), InStr(sam_ID(num_file), "_20") - 1)
+        
+        ' ■ mhtファイルを開く
+        Open FileName For Input As num_file
+        
+        r = 1  ' 読み込んでる行番号
+        rr = 0 ' [Row_read]の要素番号
+    
+        ' ■ 最終行まで1行ずつデータを読み込む
+        Do Until EOF(num_file)
+            Line Input #num_file, buf
+        
+            Dim aryLine As Variant '文字列格納用配列変数
+            aryLine = Split(buf, vbTab) '読み込んだ行をタブ区切りで配列変数に格納
+            
+            ' 読込行に到達したらデータの取得と書き込み
+            If (r = Row_EFL_read) Then
+                For i = LBound(aryLine) To UBound(aryLine)
+                    ' EFL読込行から不要な文字を排除
+                    temp = Mid(aryLine(0), 6)
+                    temp = CDbl(Replace(temp, " [mm]", ""))
+                    EFL = temp
+                    
+                    ' 2列目からかきこみ
+                    Cells(i + num_file, rr + 2) = EFL
+                    ' サンプルIDのかきこみ
+                    Cells(i + num_file, 1) = sam_ID(num_file)
+                    
+                    rr = rr + 1
+                    ' ループ抜け
+                    If (rr = num_row + 1) Then Exit Do
+                Next
+            End If
+            r = r + 1
+        Loop
+        Close num_file
+        num_file = num_file + 1
+        
+        FileName = Dir() ' 次のファイル名を取得
+    Loop
+    
+    
+    
+    ' ■ 一行目にシート説明用の行を挿入
+    Rows("1:1").Insert Shift:=xlDown, CopyOrigin:=xlFormatFromLeftOrAbove
+    Cells(1, 1) = "Sample_ID"
+    Cells(1, 2) = "EFL [mm]"
+  
+  
+    ' ■ グラフ作成用にソート、コピペ、体裁調整
+    If (edit_data_mode = 1) Then
+        
+        ' ■ ソート
+        ' ソートフィールドセット
+        Worksheets(s_name1).Sort.SortFields.Clear
+        ' サンプルID昇順
+        Worksheets(s_name1).Sort.SortFields.Add Key:=Range( _
+        Cells(2, 1), Cells(Rows.count, 1).End(xlUp)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+        ' アジマス角昇順
+        Worksheets(s_name1).Sort.SortFields.Add Key:=Range( _
+        Cells(2, 2), Cells(Rows.count, 2).End(xlUp)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+        ' ソート実行
+        With Worksheets(s_name1).Sort
+            .SetRange Range(Cells(2, 1), ActiveCell.SpecialCells(xlLastCell))
+            .Header = xlGuess
+            .MatchCase = False
+            .Orientation = xlTopToBottom
+            .SortMethod = xlPinYin
+            .Apply
+        End With
+    
+        ' ■ EFL_aveの書き込み
+        row_paste = Cells(2, Columns.count).End(xlToLeft).Column
+        row_paste = row_paste + 3
+        ' 序文
+        Cells(1, row_paste) = Cells(1, 1)
+        Cells(1, row_paste + 1) = "EFL_ave"
+        
+        ' 行読み込みループ
+        For r = 2 To Cells(Rows.count, 1).End(xlUp).Row
+            If (Cells(r, 2) = "90deg") Then
+                ' サンプルID
+                Cells(Cells(Rows.count, row_paste).End(xlUp).Row + 1, row_paste) = Cells(r, 1)
+                ' EFL_ave(0deg)
+                If (EFL_ave_azimuth = 1) Then
+                    Cells(Cells(Rows.count, row_paste + 1).End(xlUp).Row + 1, row_paste + 1) = Cells(r, 3)
+                ' EFL_ave(0deg & 180deg)
+                ElseIf (EFL_ave_azimuth = 2) Then
+                    Cells(Cells(Rows.count, row_paste + 1).End(xlUp).Row + 1, row_paste + 1) = (Cells(r, 3) + Cells(r + 1, 3)) / 2
+                End If
+            End If
+        Next
+        
+        
+    End If
+    
+    
+    ' 表示を開始
+    Application.ScreenUpdating = True
+    
+    Debug.Print Time & " - EFL finish!"
+    DoEvents
+    
+    
+End Sub

@@ -1,0 +1,36 @@
+  ' ■■ ソート
+    ' 優先1: 空間周波数
+    ' 優先2: サンプル番号
+    ' 優先2: アジマス角度
+    ' 優先4: 画角 (dZ -> (X)deg ->  ... -> 0deg  -> ... -> (X)deg)
+    
+    ' ソート設定、ソート開始
+    ActiveSheet.Sort.SortFields.Clear
+    ActiveSheet.Sort.SortFields.Add Key:=Range _
+        (Cells(2, 2), Cells(2, 2).End(xlDown)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    ActiveSheet.Sort.SortFields.Add Key:=Range _
+        (Cells(2, 4), Cells(2, 4).End(xlDown)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    ActiveSheet.Sort.SortFields.Add Key:=Range _
+        (Cells(2, 3), Cells(2, 3).End(xlDown)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    With ActiveSheet.Sort
+        '.SetRange Cells(2, 2).CurrentRegion
+        .SetRange Range(Cells(2, 2), ActiveCell.SpecialCells(xlLastCell))
+        .Header = xlGuess
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+    
+     ' 表示を再開
+    Application.ScreenUpdating = True
+    
+    Debug.Print Time & " - Read_TF MTF finish!"
+    
+    DoEvents
+    
+End Sub
+    

@@ -1,0 +1,53 @@
+Option Explicit
+
+Sub Arrange_sheet_TF_MTF_AA(arrange_sheet As String)
+    
+    ' MTF画角名を格納
+    Dim fov_arr As Variant: fov_arr = Split(fov_arr_string, ",")
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+    ' AA計算に用いる画角を格納する配列
+    Dim fov_AA As Variant:  fov_AA = Split(fov_AA_string, ",")
+    
+    Dim s1 As Worksheet: Set s1 = Worksheets(S_name(2)) ' TF MTF(CB)
+    Dim s2 As Worksheet: Set s2 = Worksheets(arrange_sheet) ' TFデータの下処理したいシート
+    
+    Dim i As Long, j As Long, k As Long, r As Long, c As Long, t As Long
+    Dim cnt As Integer
+    Dim offset As Integer
+
+' ■■ TF MTF AAシートの整備
+
+' 表示を停止
+Application.ScreenUpdating = False
+
+s2.Cells.Clear  ' シートのクリア
+
+' コピペを使ってTF MTF AAを作成する
+cnt = 0
+offset = 0
+
+' 1行目のコピペ
+s1.Rows(1).Copy s2.Rows(1)
+        
+' 行読込ループ
+For r = 2 To s1.Cells(Rows.count, 2).End(xlUp).Row
+    ' dz行のコピペ
+    If (s1.Cells(r, 8) = "dz") Then
+        s1.Rows(r).Copy
+        For k = 1 To num_fov
+            s2.Rows(2 * k + cnt * (num_fov * 2)).PasteSpecial
+        Next k
+        cnt = cnt + 1
+    End If
+    ' MTF格納行のコピペ
+    If (s1.Cells(r, 8) <> "dz") Then
+        s1.Rows(r).Copy
+        s2.Rows(r + offset - (cnt - 1)).PasteSpecial
+        offset = offset + 1
+    End If
+Next r
+
+End Sub
+
+

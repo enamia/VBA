@@ -1,0 +1,171 @@
+Option Explicit
+
+' ■ [png出力] TF MTF graphをpngデータにて出力する
+
+' *1 ファイルサイズが重くなるので注意!(~MB)
+
+Sub Export_png_TF_MTF()
+
+    '=== 設定開始 ===
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+    Const s_name1 As String = "png" ' png貼り付け用シート
+    Const s_name2 As String = "png_AA" ' png貼り付け用シート
+    Dim TF_name As String: TF_name = S_name(10)
+    Dim TF_AA_name As String: TF_AA_name = S_name(11)
+    '=== 設定終了 ===
+    
+    Dim ws As Worksheet, flag As Boolean
+    Dim i, j As Long
+    Dim paste_position_top As Variant
+    Dim paste_position_left As Variant
+            
+    
+    ' セルへの描画表示停止
+    Application.ScreenUpdating = False
+    
+    ' すでにシートがあったら終了、なかったら挿入
+    For Each ws In Worksheets
+        If ws.Name = s_name1 Then flag = True
+    Next ws
+    If flag = True Then
+        Worksheets(s_name1).Cells.Clear
+        For i = Worksheets(s_name1).ChartObjects.count To 1 Step -1
+                Worksheets(s_name1).ChartObjects(i).Delete
+        Next i
+    Else
+        With Worksheets.Add(after:=Worksheets(TF_AA_name))
+            .Name = s_name1
+        End With
+    End If
+    
+    ' シート[TF MTF png]にpng貼り付け
+    Worksheets(TF_name).Activate
+    i = 1
+    For j = Worksheets(TF_name).ChartObjects.count To 1 Step -1
+                paste_position_top = Worksheets(TF_name).ChartObjects(j).Top
+                paste_position_left = Worksheets(TF_name).ChartObjects(j).Left
+                Worksheets(TF_name).ChartObjects(j).Copy
+                Worksheets(s_name1).Select
+                Range("C3").Select
+                ActiveSheet.PasteSpecial Format:="図 (PNG)", Link:=False, DisplayAsIcon:=False
+                With ActiveSheet.Shapes(i)
+                    .Top = paste_position_top
+                    .Left = paste_position_left
+                End With
+                i = i + 1
+                ' 高負荷処理へのエラー回避　おまじない
+                If (j Mod 20 = 0) Then DoEvents
+    Next j
+    
+    
+    ' すでにシートがあったら終了、なかったら挿入
+    For Each ws In Worksheets
+        If ws.Name = s_name2 Then flag = True
+    Next ws
+    If flag = True Then
+        Worksheets(s_name2).Cells.Clear
+        For i = Worksheets(s_name2).ChartObjects.count To 1 Step -1
+                Worksheets(s_name2).ChartObjects(i).Delete
+        Next i
+    Else
+        With Worksheets.Add(after:=Worksheets(s_name1))
+            .Name = s_name2
+        End With
+    End If
+   
+    ' シート[TF MTF png]にpng貼り付け
+    Worksheets(TF_AA_name).Activate
+    i = 1
+    For j = Worksheets(TF_AA_name).ChartObjects.count To 1 Step -1
+                paste_position_top = Worksheets(TF_AA_name).ChartObjects(j).Top
+                paste_position_left = Worksheets(TF_AA_name).ChartObjects(j).Left
+                Worksheets(TF_AA_name).ChartObjects(j).Copy
+                Worksheets(s_name2).Select
+                Range("C3").Select
+                ActiveSheet.PasteSpecial Format:="図 (PNG)", Link:=False, DisplayAsIcon:=False
+                With ActiveSheet.Shapes(i)
+                    .Top = paste_position_top
+                    .Left = paste_position_left
+                End With
+                i = i + 1
+                ' 高負荷処理へのエラー回避　おまじない
+                If (j Mod 20 = 0) Then DoEvents
+    Next j
+    
+    
+    
+    ' セルへの描画表示開始
+    Application.ScreenUpdating = True
+
+End Sub
+
+Sub Delete_png_sheet()
+    Const s_name1 As String = "png" ' png貼り付け用シート
+    Const s_name2 As String = "png_AA" ' png貼り付け用シート
+    
+    Sheets(s_name1).Delete
+    Sheets(s_name2).Delete
+End Sub
+
+' ■ チャートをグループ化してから処理したい場合
+Sub Export_png_TF_MTF_IKKATSU()
+
+    '=== 設定開始 ===
+    Const chart_grp As String = "TF_MTF"
+    Const s_name1 As String = "png" ' png貼り付け用シート
+    '=== 設定終了 ===
+    
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+    Dim ws As Worksheet, flag As Boolean
+    Dim i As Long
+    
+    ' セルへの描画表示停止
+    Application.ScreenUpdating = False
+    
+    ' シート[TF MTF]のチャートをグループ化
+    With Worksheets(S_name(7))
+        .Activate
+        With .Shapes
+            If .count >= 2 Then
+                .SelectAll
+                Selection.Group.Name = chart_grp
+            Else
+                .SelectAll
+                Selection.Name = chart_grp
+            End If
+        End With
+    End With
+    
+    
+    ' すでにシートがあったら終了、なかったら挿入
+    For Each ws In Worksheets
+        If ws.Name = s_name1 Then flag = True
+    Next ws
+    
+    If flag = True Then
+        Worksheets(s_name1).Cells.Clear
+        For i = Worksheets(s_name1).ChartObjects.count To 1 Step -1
+                Worksheets(s_name1).ChartObjects(i).Delete
+        Next i
+    Else
+        With Worksheets.Add(after:=Worksheets(S_name(7)))
+            .Name = s_name1
+        End With
+    End If
+   
+    ' シート[TF MTF png]にpng貼り付け
+    Worksheets(S_name(7)).Activate
+    ActiveSheet.Shapes.Range(Array(chart_grp)).Select
+    Selection.Copy
+    Sheets(s_name1).Select
+    Range("C3").Select
+    ActiveSheet.PasteSpecial Format:="図 (PNG)", Link:=False, DisplayAsIcon:=False
+    
+    ' セルへの描画表示開始
+    Application.ScreenUpdating = True
+
+End Sub
+
+

@@ -1,0 +1,82 @@
+' 透過率(Transmission)
+Option Explicit
+
+' IM-HRで測定しmht形式で保存した光学量(MTF, RI等)を複数ファイルから一括で抽出
+' ⇒ スプレッドシートにかきこむマクロ群
+' ver.1: 2018.10.11 大谷
+
+Sub Extract_Transmission_from_TXT()
+     
+
+    ' [[ 変数定義 ]]
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+   
+    Dim varFileName As Variant
+    Dim FileName As Variant
+    Dim relFileName As Variant
+    Dim num_file As Integer: num_file = 1  ' ファイル番号
+    Dim Arr() As Variant                   ' 不要な文字を格納する配列
+    Dim r As Long                          ' 開くテキストファイルの行番号
+    Dim aryLine As Variant '文字列格納用配列変数
+    Dim buf As String
+    Dim pos As Integer ' ファイル名取得用
+    Dim S_name As String: S_name = "Transmission"
+    
+    
+    ' 表示を停止
+    Application.ScreenUpdating = False
+    
+    ' [[ 複数ファイルパス名を取得 ]]
+    varFileName = Application.GetOpenFilename(FileFilter:="txtファイル(*.txt),*.txt", _
+                                        Title:="txtファイルの選択(透過率)", MultiSelect:=True)
+    
+     ' 目的のシートをアクティベート
+    Sheets(S_name).Activate
+    
+     ' [[ ファイルパス取得できなかったら終了 ]]
+    If IsArray(varFileName) = False Then
+        Exit Sub
+    End If
+    
+    
+    ' [[ ファイルパス取得できたらセル書き込み実行 ]]
+    For Each FileName In varFileName
+        
+        ' 相対パスの取得
+        pos = InStrRev(FileName, "\")
+        relFileName = Mid(FileName, pos + 1)
+        
+        ' ファイル名の書き込み
+        Cells(1, num_file) = relFileName
+        
+         ' txtファイルを開く
+        Open FileName For Input As num_file
+        
+        r = 1  ' 1行目から書き出す
+    
+        Do Until EOF(num_file)
+            Line Input #num_file, buf
+            ' 読み込んだ行をタブ区切りで配列変数に格納
+            aryLine = Split(buf, vbTab)
+            ReDim Preserve aryLine(2)
+            
+            ' 最初のファイルだけ2行目から波長列を読み込む
+            If ((num_file = 1) And (r >= 2)) Then Cells(r, 1) = aryLine(0)
+            ' 透過率書き込み
+            Cells(r, num_file + 1) = aryLine(1)
+            
+            r = r + 1
+        Loop
+        
+        Close num_file
+        num_file = num_file + 1
+        
+    Next FileName
+    
+    ' 表示を開始
+    Application.ScreenUpdating = True
+    
+End Sub
+
+

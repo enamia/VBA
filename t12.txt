@@ -1,0 +1,216 @@
+Option Explicit
+
+' ■ [Field Curvature] TF MTFのシートから画角毎にMTFピーク位置を抜き出す
+
+' 1. シート[TF MTF(CB)] に書き込んであるFocus positionを拾う
+' 2. シート[Field Curv]に書き込む
+
+Sub Extract_FCurv_from_TF_MTF()
+
+    '=== 設定開始 ===
+    Dim edit_data_mode As String: edit_data_mode = 1 ' (If 1) 提示用に体裁を整えた表を別途作成する
+    Const paste_row As Integer = 12 ' 体裁整えた表を貼り付ける列番号
+    Const paste_row2 As Integer = paste_row + 8 ' 体裁整えた表を貼り付ける列番号
+    '=== 設定終了 ===
+    
+    ' モジュール[Setting]で設定したシート名の配列[s_name]への格納
+    Dim S_name As Variant: S_name = Split(sheet_name, ",")
+
+    Dim r_step As Integer: r_step = num_fov + 1 ' MTF評価数 + 1をいれる
+    Dim s_name1 As String: s_name1 = S_name(2) ' [TF MTF CB]
+    Dim s_name2 As String: s_name2 = S_name(12) ' [FCurv]
+    
+    Dim ws As Worksheet, flag As Boolean
+    Dim TF_MTF As Variant
+    Dim dz_mtfmax As Variant
+    Dim dz_mtfmax_row As Variant
+    Dim mtfmax As Variant
+    Dim fcurv As Variant
+    Dim c, i, r As Integer
+    Dim CB_row As Integer
+    Dim tmp As Variant
+
+    ' セルへの描画表示停止
+    Application.ScreenUpdating = False
+
+    ' シート[Field curv]があれば[Through Focus MTF]をコピー,なければシート作成後にコピーする
+    For Each ws In Worksheets
+        If (ws.Name = s_name2) Then flag = True
+    Next ws
+
+    If (flag = True) Then
+        Worksheets(s_name1).Range("A1").CurrentRegion.Copy Worksheets(s_name2).Range("A1")
+    ElseIf (flag = False) Then
+        Worksheets(s_name1).Copy after:=Worksheets(s_name1)
+        ActiveSheet.Name = s_name2
+    End If
+
+    Worksheets(s_name2).Select
+    
+
+
+    ' 湾曲格納配列の要素数再定義
+    ' 要素2は0: Tan, 1: Sag
+    ReDim fcurv(Cells(Rows.count, 2).End(xlUp).Row)
+
+    ' Focus position(6列目)から[Design position]分だけ引いた量を[fcurv]に代入する
+    For c = 2 To Cells(Rows.count, 2).End(xlUp).Row
+        ' [dz]の書き込まれている行を探し、CB座標を取得
+        If (Cells(c, 8) = "dz") Then
+            CB_row = c + fov_center_num
+        End If
+        ' 各画角のfocus positionからCB座標を引いてfcurvに格納
+        If (c Mod r_step <> 2) Then
+            fcurv(c) = Cells(c, 6) - Cells(CB_row, 6)
+        Else
+            fcurv(c) = 0
+        End If
+    Next
+    
+
+
+    ' セルへの書き込み
+    Range(Cells(1, 9), ActiveCell.SpecialCells(xlLastCell)).ClearContents
+    Cells(1, 9) = "Field curvature [mm]"
+    For c = 2 To Cells(Rows.count, 2).End(xlUp).Row
+        If (c Mod r_step <> 2) Then
+            ' Through focus MTFグラフの像側方向とHRステージの+方向が逆のため(*-1)する
+            Cells(c, 9) = (-1) * fcurv(c)
+        End If
+    Next
+
+    ' セルへの描画表示再開
+    If (edit_data_mode <> 1) Then
+        Application.ScreenUpdating = True
+    End If
+  
+
+  
+' ====================
+' 顧客提示用に体裁整える(オプション)
+If (edit_data_mode = 1) Then
+     Application.ScreenUpdating = False
+    ' 列別ににコピペ
+    Range(Cells(1, 2), Cells(Cells(Rows.count, 2).End(xlUp).Row, Cells(1, Columns.count).End(xlToLeft).Column)).Copy
+    Cells(1, paste_row).PasteSpecial
+    
+    ' 不要なデータの削除
+    ' Focus/peak MTF列削除
+    Columns(paste_row + 4).Delete Shift:=xlToLeft
+    Columns(paste_row + 4).Delete Shift:=xlToLeft
+    
+    ' [dz]行の削除
+    For r = 2 To Cells(Rows.count, paste_row).End(xlUp).Row
+        If (Cells(r, paste_row + 4) = "dz") Then
+            Range(Cells(r, paste_row), Cells(r, Columns.count).End(xlToLeft)).ClearContents ' .Delete Shift:=xlShiftUp
+        End If
+    Next
+    For r = Cells(Rows.count, paste_row).End(xlUp).Row To 1 Step -1
+        If WorksheetFunction.CountA(Cells(r, paste_row)) = 0 Then
+            Range(Cells(r, paste_row), Cells(r, Cells(r + 1, Columns.count).End(xlToLeft).Column)).Delete
+        End If
+    Next
+    
+    ' ■ 空白行の一括削除
+    'Call Delete_Rows_w_Blank(paste_row)
+    
+    ' ■ ソート
+    ' ソートフィールドセット
+    Worksheets(s_name2).Sort.SortFields.Clear
+    ' 周波数昇順
+    Worksheets(s_name2).Sort.SortFields.Add Key:=Range( _
+        Cells(2, paste_row + 2), Cells(Rows.count, paste_row + 2).End(xlUp)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    ' アジマス角昇順
+    Worksheets(s_name2).Sort.SortFields.Add Key:=Range( _
+        Cells(2, paste_row + 1), Cells(Rows.count, paste_row + 1).End(xlUp)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    ' サンプル名昇順
+    Worksheets(s_name2).Sort.SortFields.Add Key:=Range( _
+        Cells(2, paste_row), Cells(Rows.count, paste_row).End(xlUp)), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    ' ソート実行
+    With Worksheets(s_name2).Sort
+        .SetRange Range(Cells(2, paste_row), ActiveCell.SpecialCells(xlLastCell))
+        .Header = xlGuess
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+    
+
+    
+    ' ■ コピペ2回目
+    'Range(Cells(1, paste_row), Cells(Cells(Rows.count, paste_row).End(xlUp).Row, Cells(1, Columns.count).End(xlToLeft).Column)).Copy
+    'Cells(1, paste_row2).PasteSpecial
+    
+    ' 序文書き込み
+    Cells(1, paste_row2) = "Azimuth"
+    Cells(2, paste_row2) = "Spatial Frequency"
+    Cells(3, paste_row2) = "Slit"
+    ' 画角書き込み
+    For r = 1 To num_fov
+        tmp = InStr(Cells(r + 1, paste_row + 4), "deg") - 1
+        Cells(r + 4, paste_row2) = Left(Cells(r + 1, paste_row + 4), tmp)
+    Next
+    
+    ' fcurv/アジマス/周波数/サンプルID書き込み
+    i = 0
+    ' 行読込ループ
+    For r = 2 To Cells(Rows.count, paste_row).End(xlUp).Row
+        ' fcurv書き込み
+        Cells(5 + i Mod num_fov, paste_row2 + Int(i / num_fov) + 1) = Cells(r, paste_row + 5)
+    
+        i = i + 1
+        ' 行を[num_fov]行読み込んだらアジマス/周波数/サンプルID書き込み
+        If (i Mod num_fov = 0) Then
+            Cells(1, paste_row2 + i / num_fov) = Cells(i, paste_row + 1)
+            Cells(2, paste_row2 + i / num_fov) = Cells(i, paste_row + 2)
+            Cells(3, paste_row2 + i / num_fov) = Cells(i, paste_row + 3)
+            Cells(4, paste_row2 + i / num_fov) = Cells(i, paste_row)
+        End If
+    Next
+    
+     Application.ScreenUpdating = True
+End If
+' ====================
+
+End Sub
+
+
+
+
+'*********************************************************
+ '　空白行の一括削除　　Delete_Rows_w_Blank
+ '*********************************************************
+Sub Delete_Rows_w_Blank(paste_row As Integer)
+    Dim GYO As Long
+    Dim KuhakuGyo As Range
+    Dim r As Long
+
+     ' [paste_row]列をみて表の最終行を取得する ------ ※1
+    GYO = Cells(Rows.count, paste_row).End(xlUp).Row
+    '2行目から最終行までB列のセルをチェックします
+    With ActiveSheet
+        For r = 2 To GYO
+        '[paste_row]列のセルが空白なら変数 KuhakuGyo に追加
+        If IsEmpty(Cells(r, paste_row).Value) Then
+            '最初の空白行に出会ったら行全体を KuhakuGyo にセット
+            If KuhakuGyo Is Nothing Then
+                Set KuhakuGyo = .Rows(r).EntireRow
+            '2件目からは順次 KuhakuGyo に追加していく
+            Else
+                Set KuhakuGyo = Union(KuhakuGyo, .Rows(r).EntireRow)
+            End If
+        End If
+        Next r
+    End With
+
+    '空白行があれば一括で削除する
+    If Not KuhakuGyo Is Nothing Then
+        KuhakuGyo.Delete
+    End If
+ End Sub
+'-----------------<< End of Source >>------------------
+
