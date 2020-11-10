@@ -1,0 +1,179 @@
+' http://www.geocities.co.jp/SiliconValley-Bay/5881/excel_vba.html
+' ↑よりダウンロードした多項式による2次元データの最小二乗法フィッティング関数
+' 関数[polyest]の引数に二次元データと多項式の次数を入力
+' 出力は多項式の係数
+
+
+
+'98/01/17 - 01/26
+'Ｃによる理工学問題の解法　佐藤次男、中村理一郎、伊藤惇著を参考にした
+
+'xlErrDiv0   2007    #DIV/0!
+'xlErrNA     2042    #N/A
+'xlErrName   2029    #NAME?
+'xlErrNull   2000    #NULL!
+'xlErrNum    2036    #NUM!
+'xlErrRef    2023    #REF!
+'xlErrValue  2015    #VALUE!
+'CVErr(xlErrDiv0) とかを関数の値として返すとエラー表示になる
+    
+Dim x(100), y(100), a(11) As Double  '   ｘとｙの組みは１００まで
+Dim xx(11, 12), yy(11) As Double
+
+
+Public Function Polyest(既知のx, 既知のy, 近似関数の次数)
+    Dim x1, x2, x3, x4, y1, y2, y3, y4, ipivot As Integer
+    x1 = 既知のx.Row
+    x2 = 既知のx.Column
+    x3 = 既知のx.Rows.count
+    x4 = 既知のx.Columns.count
+    If x3 = 1 And x4 = 1 Then Polyest = CVErr(xlErrRef): GoTo Pend
+    If x3 <> 1 And x4 <> 1 Then Polyest = CVErr(xlErrRef): GoTo Pend
+    If x3 > x4 Then xw = x3 Else xw = x4
+    
+    y1 = 既知のy.Row
+    y2 = 既知のy.Column
+    y3 = 既知のy.Rows.count
+    y4 = 既知のy.Columns.count
+    If y3 = 1 And y4 = 1 Then Polyest = CVErr(xlErrRef): GoTo Pend
+    If y3 <> 1 And y4 <> 1 Then Polyest = CVErr(xlErrRef): GoTo Pend
+    If y3 > y4 Then yw = y3 Else yw = y4
+       
+    If xw <> yw Then Polyest = CVErr(xlErrRef): GoTo Pend:
+    
+    n = 0
+    For i = 1 To x3     'ワークシート配列の添字は１からだったのだ
+        For j = 1 To x4
+            x(n) = CDbl(既知のx(i, j))     '   配列ｘにｘの値の組が入る
+            n = n + 1           '   そのまま配列として使えるではないか
+        Next
+    Next
+    
+    n = 0
+    For i = 1 To y3
+        For j = 1 To y4
+            y(n) = CDbl(既知のy(i, j))     '   配列ｙにｙの値の組が入る
+            n = n + 1
+        Next
+    Next
+    
+    m = 近似関数の次数
+    mm = m
+    ReDim Am(m) As Double
+       
+    ipivot = least(xw, m)
+    If ipivot = 0 Then Polyest = CVErr(xlErrNum): GoTo Pend:
+    For i = 0 To mm: Am(mm - i) = a(i): Next
+    Polyest = Am()
+Pend:
+End Function
+
+'   下の関数はテスト済み
+Public Function least(ByVal n, ByVal m)    'グローバルの配列変数の x,y,a を使用している
+    Dim eps As Double
+    eps = 1E-20
+    Dim ipivot, i, j, k, l As Integer
+    Dim s As Double
+    
+    For i = 1 To m + 1
+        For j = 1 To m + 1
+            xx(i - 1, j - 1) = 0#
+            For k = 1 To n
+                s = 1#
+                For l = 1 To i + j - 2
+                    s = s * x(k - 1)
+                Next
+                xx(i - 1, j - 1) = xx(i - 1, j - 1) + s
+            Next
+        Next
+    Next
+    For j = 1 To m + 1
+        yy(j - 1) = 0#
+        For i = 1 To n
+            s = 1#
+            For l = 1 To j - 1
+                s = s * x(i - 1)
+            Next
+            yy(j - 1) = yy(j - 1) + s * y(i - 1)
+        Next
+        xx(j - 1, m + 1) = yy(j - 1)
+    Next
+                           
+    least = rgaule(m + 1, eps)
+end2:
+End Function
+
+'   下の関数はテスト済み
+Public Function rgaule(ByVal n As Integer, ByVal eps As Double)
+'グローバルの配列変数の A, xx を使用している
+    Dim swap, amax, iswap As Double
+    Dim ln(100) As Integer
+    Dim i, j, k, kk, l, m, irow, icolum, ll2 As Integer
+    For i = 1 To n
+        ln(i - 1) = i
+    Next
+    For m = 1 To n - 1
+        amax = 0#
+        For i = m To n
+            For j = m To n
+                If amax >= Abs(xx(i - 1, j - 1)) Then GoTo Rnext:
+                amax = Abs(xx(i - 1, j - 1))
+                irow = i
+                icolum = j
+Rnext:
+            Next
+        Next
+        If amax <= eps Then rgaule = 0: GoTo end1:
+        If m <> irow Then
+            For l = m To n + 1
+                swap = xx(irow - 1, l - 1)
+                xx(irow - 1, l - 1) = xx(m - 1, l - 1)
+                xx(m - 1, l - 1) = swap
+            Next
+'Debug.Print m; "行と"; irow; "行を交換した後の係数と定数"
+'Output
+        End If
+        If m <> icolum Then
+            For l = 1 To n
+                swap = xx(l - 1, icolum - 1)
+                xx(l - 1, icolum - 1) = xx(l - 1, m - 1)
+                xx(l - 1, m - 1) = swap
+            Next
+'Debug.Print m; "列と"; icolum; "列を交換した後の係数と定数"
+'Output
+            iswap = ln(m - 1)
+            ln(m - 1) = ln(icolum - 1)
+            ln(icolum - 1) = iswap
+        End If
+        For i = m + 1 To n
+            For j = n + 1 To 1 Step -1
+                xx(i - 1, j - 1) = xx(i - 1, j - 1) - xx(i - 1, m - 1) * xx(m - 1, j - 1) / xx(m - 1, m - 1)
+            Next
+        Next
+'Debug.Print m + 1; "行以降に、消去法を適用した後の係数と定数"
+'Output
+    Next
+    If Abs(xx(n - 1, n - 1)) <= eps Then rgaule = 0: GoTo end1:
+    
+    a(n - 1) = xx(n - 1, n + 1 - 1) / xx(n - 1, n - 1)
+    kk = ln(n - 1)
+    xx(n - 1, kk - 1) = a(n - 1)
+    For i = n - 1 To 1 Step -1
+        k = n - i
+        a(i - 1) = 0#
+        For j = 1 To k
+            ll2 = i + j
+            a(i - 1) = xx(i - 1, ll2 - 1) * a(ll2 - 1) + a(i - 1)
+        Next
+        a(i - 1) = (xx(i - 1, n + 1 - 1) - a(i - 1)) / xx(i - 1, i - 1)
+        kk = ln(i - 1)
+        xx(n - 1, kk - 1) = a(i - 1)
+    Next
+    For i = 1 To n
+        a(i - 1) = xx(n - 1, i - 1)
+    Next
+    rgaule = 1
+end1:
+End Function
+
+
